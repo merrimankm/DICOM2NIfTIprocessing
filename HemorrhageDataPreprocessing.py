@@ -1,49 +1,40 @@
 # HemorrhageDataPreprocessing.py
-#   Created 5/4/22 by Katie Merriman
+#   Created 8/8/22 by Katie Merriman
 #   Searches through designated folder for DICOM files of all patients on csv list
-#   Converts DICOMs to Nifti, determines DICOM type, and saves to designated folder
-#   Resamples ADC, B0, and DCE based on T2, if ADC and B0 exist
-#   If ADC NIfTI with same resampling exists, high B can be calculated with calculate_highB.py after running this code
+#   Determines DICOM orientation, sorts DICOMS, converts to NIfTI, and saves to designated folder
 
 # Requirements
 #   pydicom
 #   SimpleITK
-#   Pandas
-#   Scikit-image
-#   Glob
-#   numpy
+#   csv
+#   pandas
+#   shutil
 
-# Inputs
+# Inputs (currently in class definition)
 #   1: csv file with column of MRNs to convert labeled as "MRN"
-#           (MRNs can be JUST the MRN or in MRN_DateOfMRI format)
-#   2: path to source folder with DICOMS
-#   3: path to folder where converted files and csv reports should be saved
-#   example usage:
-#   python highB_resample.py "/path/to/cvsFileName.csv" "/path/to/source/folder" "/path/to/save/folder"
+#   2: path to source directory with all patients' DICOMS
+#           - converted files will be saved in each patient folder and csv report will be saved in top level folder
 
 # Outputs
-#   Nifti files saved as T2, ADC, DCE, or highB in folders created for each patient within designated save folder
-
+#   1: Sorted DICOMs saved in folders within each DICOM series folder
+#   2: Converted NIfTIs saved in folders in each patient folder
+#   3: Csv report saved in top level source folder
 
 import os
-#import sys
-import pydicom
 from pydicom import dcmread
 from pydicom.errors import InvalidDicomError
 import SimpleITK as sitk
 import csv
 import pandas as pd
-import numpy as np
-import glob
-from skimage import draw
 import shutil
 
 
 
 class DICOMconverter():
     def __init__(self):
-        pathways = 1 # I just do this so I can easily switch between the versions of the filepaths needed to debug on my computer or run on Lambda.
-                    # if on lambda, I just change "pathways" to 0 instead of commenting/uncommenting multiple lines
+        pathways = 1
+            # I just do this so I can easily switch between the versions of the filepaths needed to debug on my computer vs run on Lambda.
+            # if on lambda, I just change "pathways" to 0 instead of commenting/uncommenting multiple lines
 
         if pathways:
             self.csv_file = r'T:\MIP\Robert Huang\2022_06_01\other\hemorrhage\patients2convert.csv'
@@ -55,7 +46,6 @@ class DICOMconverter():
 
 
         self.DICOMconversions = []
-        self.error_data = []
 
     def convertPatients(self):
         patient = []
@@ -70,12 +60,7 @@ class DICOMconverter():
 
             #find and store path to patient folder with MRN
             # p = p + '*'               # allows search regardless of what follows MRN in folder names
-            folderList = [x for x in patientFolders if p in x ]
-            # patientPath = glob.glob(os.path.join(self.patientFolder, p), recursive=True)
-            # if patientPath:
-            #     patientPath = patientPath[0]
-            #     patientID = os.path.basename(patientPath) # saves all variations of MRN folder names, eg. 7525217 and 7525217_m
-            #     patient.append([patientID, patientPath, 0])
+            folderList = [x for x in patientFolders if p in x]
             for patientID in folderList:
                 patientPath = os.path.join(self.patientFolder, patientID)
                 patient.append([patientID, patientPath, 0])  # 0 will be updated with number of successful conversions below
@@ -98,7 +83,7 @@ class DICOMconverter():
             for name in files:
 
                 ## ignore common non-DICOM files
-                if name.endswith(tuple(suffix_list)):  #ignore non-DICOM files
+                if name.endswith(tuple(suffix_list)):
                     continue
 
                 ## look for DICOMS and sort by orientation
@@ -129,7 +114,7 @@ class DICOMconverter():
                         if not os.path.exists(orthogPath):
                             try:
                                 os.mkdir(orthogPath)
-                                dicomFoldersList.append([orthogPath, orientation]) # add new folder to list of DICOM folders for convertion to NIfTI
+                                dicomFoldersList.append([orthogPath, orientation])  # add to list of DICOM folders for later convertion to NIfTI
                             except FileNotFoundError:
                                 print(f'Error! Invalid path!')
 
@@ -152,15 +137,15 @@ class DICOMconverter():
         reader = sitk.ImageSeriesReader()
         for folder in dicomFoldersList:
             # create path and file name for NIfTI
-            savePath = os.path.join(p[1], folder[1] + '_NIfTI')  # creates new folder at patient level for each orientation
+            savePath = os.path.join(p[1], folder[1] + '_NIfTI')
             try:
                 os.mkdir(savePath)
-                incr = 0 #file is first of that orientation being saved
+                incr = 0  # file is first of that orientation being saved
             except FileNotFoundError:
                 print(f'Error! Invalid path!')
             except FileExistsError:
-                incr = 1 # another file of same orientation exists - need to increment filename
-            if folder[1] == 'sagittal' :
+                incr = 1  # another file of same orientation exists - need to increment filename
+            if folder[1] == 'sagittal':
                 s_copy = s_copy + incr
                 copy = s_copy
             elif folder[1] == 'coronal':
